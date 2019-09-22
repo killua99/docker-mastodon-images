@@ -1,12 +1,12 @@
-FROM node:12-alpine as base
+FROM node:12-alpine
 
 # Install jemalloc
 ENV JE_VER 5.1.0
 
 RUN apk add --no-cache \
-    autoconf;
-
-    wget https://github.com/jemalloc/jemalloc/archive/${JE_VER}.tar.gz
+    wget \
+    autoconf && \
+    wget https://github.com/jemalloc/jemalloc/archive/${JE_VER}.tar.gz && \
     tar xf ${JE_VER}.tar.gz && \
     cd jemalloc-${JE_VER} && \
     ./autogen.sh && \
@@ -36,110 +36,110 @@ ENV LDFLAGS -L/opt/jemalloc/lib/
 #   we purge system ruby later to make sure our final image uses what we just built
 # readline-dev vs libedit-dev: https://bugs.ruby-lang.org/issues/11869 and https://github.com/docker-library/ruby/issues/75
 RUN set -eux; \
-	\
-	apk add --no-cache --virtual .ruby-builddeps \
-		autoconf \
-		bison \
-		bzip2 \
-		bzip2-dev \
-		ca-certificates \
-		coreutils \
-		dpkg-dev dpkg \
-		gcc \
-		gdbm-dev \
-		glib-dev \
-		libc-dev \
-		libffi-dev \
-		libxml2-dev \
-		libxslt-dev \
-		linux-headers \
-		make \
-		ncurses-dev \
-		openssl \
-		openssl-dev \
-		procps \
-		readline-dev \
-		ruby \
-		tar \
-		xz \
-		yaml-dev \
-		zlib-dev \
-	; \
-	\
-	wget -O ruby.tar.xz "https://cache.ruby-lang.org/pub/ruby/${RUBY_MAJOR%-rc}/ruby-$RUBY_VERSION.tar.xz"; \
-	echo "$RUBY_DOWNLOAD_SHA256 *ruby.tar.xz" | sha256sum --check --strict; \
-	\
-	mkdir -p /usr/src/ruby; \
-	tar -xJf ruby.tar.xz -C /usr/src/ruby --strip-components=1; \
-	rm ruby.tar.xz; \
-	\
-	cd /usr/src/ruby; \
-	\
+    \
+    apk add --no-cache --virtual .ruby-builddeps \
+        autoconf \
+        bison \
+        bzip2 \
+        bzip2-dev \
+        ca-certificates \
+        coreutils \
+        dpkg-dev dpkg \
+        gcc \
+        gdbm-dev \
+        glib-dev \
+        libc-dev \
+        libffi-dev \
+        libxml2-dev \
+        libxslt-dev \
+        linux-headers \
+        make \
+        ncurses-dev \
+        openssl \
+        openssl-dev \
+        procps \
+        readline-dev \
+        ruby \
+        tar \
+        xz \
+        yaml-dev \
+        zlib-dev \
+    ; \
+    \
+    wget -O ruby.tar.xz "https://cache.ruby-lang.org/pub/ruby/${RUBY_MAJOR%-rc}/ruby-$RUBY_VERSION.tar.xz"; \
+    echo "$RUBY_DOWNLOAD_SHA256 *ruby.tar.xz" | sha256sum --check --strict; \
+    \
+    mkdir -p /usr/src/ruby; \
+    tar -xJf ruby.tar.xz -C /usr/src/ruby --strip-components=1; \
+    rm ruby.tar.xz; \
+    \
+    cd /usr/src/ruby; \
+    \
 # https://github.com/docker-library/ruby/issues/196
 # https://bugs.ruby-lang.org/issues/14387#note-13 (patch source)
 # https://bugs.ruby-lang.org/issues/14387#note-16 ("Therefore ncopa's patch looks good for me in general." -- only breaks glibc which doesn't matter here)
-	wget -O 'thread-stack-fix.patch' 'https://bugs.ruby-lang.org/attachments/download/7081/0001-thread_pthread.c-make-get_main_stack-portable-on-lin.patch'; \
-	echo '3ab628a51d92fdf0d2b5835e93564857aea73e0c1de00313864a94a6255cb645 *thread-stack-fix.patch' | sha256sum --check --strict; \
-	patch -p1 -i thread-stack-fix.patch; \
-	rm thread-stack-fix.patch; \
-	\
+    wget -O 'thread-stack-fix.patch' 'https://bugs.ruby-lang.org/attachments/download/7081/0001-thread_pthread.c-make-get_main_stack-portable-on-lin.patch'; \
+    echo '3ab628a51d92fdf0d2b5835e93564857aea73e0c1de00313864a94a6255cb645 *thread-stack-fix.patch' | sha256sum --check --strict; \
+    patch -p1 -i thread-stack-fix.patch; \
+    rm thread-stack-fix.patch; \
+    \
 # hack in "ENABLE_PATH_CHECK" disabling to suppress:
 #   warning: Insecure world writable dir
-	{ \
-		echo '#define ENABLE_PATH_CHECK 0'; \
-		echo; \
-		cat file.c; \
-	} > file.c.new; \
-	mv file.c.new file.c; \
-	\
-	autoconf; \
-	gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)"; \
+    { \
+        echo '#define ENABLE_PATH_CHECK 0'; \
+        echo; \
+        cat file.c; \
+    } > file.c.new; \
+    mv file.c.new file.c; \
+    \
+    autoconf; \
+    gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)"; \
 # the configure script does not detect isnan/isinf as macros
-	export ac_cv_func_isnan=yes ac_cv_func_isinf=yes; \
-	./configure \
-		--build="$gnuArch" \
-		--disable-install-doc \
-		--enable-shared \
-	; \
-	make -j "$(nproc)"; \
-	make install; \
-	\
-	runDeps="$( \
-		scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
-			| tr ',' '\n' \
-			| sort -u \
-			| awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
-	)"; \
-	apk add --no-network --virtual .ruby-rundeps \
-		$runDeps \
-		bzip2 \
-		ca-certificates \
-		libffi-dev \
-		procps \
-		yaml-dev \
-		zlib-dev \
-	; \
-	apk del --no-network .ruby-builddeps; \
-	\
-	cd /; \
-	rm -r /usr/src/ruby; \
+    export ac_cv_func_isnan=yes ac_cv_func_isinf=yes; \
+    ./configure \
+        --build="$gnuArch" \
+        --disable-install-doc \
+        --enable-shared \
+    ; \
+    make -j "$(nproc)"; \
+    make install; \
+    \
+    runDeps="$( \
+        scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
+            | tr ',' '\n' \
+            | sort -u \
+            | awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
+    )"; \
+    apk add --no-network --virtual .ruby-rundeps \
+        $runDeps \
+        bzip2 \
+        ca-certificates \
+        libffi-dev \
+        procps \
+        yaml-dev \
+        zlib-dev \
+    ; \
+    apk del --no-network .ruby-builddeps; \
+    \
+    cd /; \
+    rm -r /usr/src/ruby; \
 # verify we have no "ruby" packages installed
-	! apk --no-network list --installed \
-		| grep -v '^[.]ruby-rundeps' \
-		| grep -i ruby \
-	; \
-	[ "$(command -v ruby)" = '/usr/local/bin/ruby' ]; \
+    ! apk --no-network list --installed \
+        | grep -v '^[.]ruby-rundeps' \
+        | grep -i ruby \
+    ; \
+    [ "$(command -v ruby)" = '/usr/local/bin/ruby' ]; \
 # rough smoke test
-	ruby --version; \
-	gem --version; \
-	bundle --version
+    ruby --version; \
+    gem --version; \
+    bundle --version
 
 # install things globally, for great justice
 # and don't create ".bundle" in all our apps
 ENV GEM_HOME /usr/local/bundle
 ENV BUNDLE_PATH="$GEM_HOME" \
-	BUNDLE_SILENCE_ROOT_WARNING=1 \
-	BUNDLE_APP_CONFIG="$GEM_HOME"
+    BUNDLE_SILENCE_ROOT_WARNING=1 \
+    BUNDLE_APP_CONFIG="$GEM_HOME"
 # path recommendation: https://github.com/bundler/bundler/pull/6469#issuecomment-383235438
 ENV PATH $GEM_HOME/bin:$BUNDLE_PATH/gems/bin:$PATH
 # adjust permissions of a few directories for running "gem install" as an arbitrary user
@@ -152,6 +152,58 @@ RUN apk add --no-cache \
     libidn11-dev
     libpq-dev
     libprotobuf-dev
+    libpq-dev
+    protobuf-compiler
 
+ARG UID=991
+ARG GID=991
 
-CMD [ "irb" ]
+RUN addgroup --gid ${GID} mastodon && \
+    useradd -m -u ${UID} -g ${GID} -d /opt/mastodon mastodon && \
+    echo "mastodon:`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 24 | mkpasswd -s -m sha-256`" | chpasswd
+
+ENV TINI_VERSION 0.18.0
+ENV TINI_SUM 12d20136605531b09a2c2dac02ccee85e1b874eb322ef6baf7561cd93f93c855
+
+RUN set -ex; \
+    ln -s /opt/jemalloc/lib/* /usr/lib/ && \
+    apkArch="$(apk --print-arch)"; \
+    case "$apkArch" in \
+        armhf) arch='armhf' ;; \
+        aarch64) arch='arm64' ;; \
+        x86_64) arch='amd64' ;; \
+        *) echo >&2 "error: unsupported architecture: $apkArch"; exit 1 ;; \
+    esac; \
+    wget --quiet -O /tmp/traefik.tar.gz "https://github.com/containous/traefik/releases/download/v2.0.0/traefik_v2.0.0_linux_$arch.tar.gz"; \
+
+ADD https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-${arch} /tini
+RUN echo "$TINI_SUM tini" | sha256sum -c -
+RUN chmod +x /tini
+
+# Copy mastodon
+COPY --chown=mastodon:mastodon mastodon-upstream /opt/mastodon
+
+RUN ln -s /opt/mastodon /mastodon && \
+    cd /opt/mastodon && \
+    bundle install -j $(nproc) --deployment --without development test && \
+    yarn install --pure-lockfile
+
+# Run mastodon services in prod mode
+ENV RAILS_ENV="production"
+ENV NODE_ENV="production"
+
+# Tell rails to serve static files
+ENV RAILS_SERVE_STATIC_FILES="true"
+ENV BIND="0.0.0.0"
+
+# Set the run user
+USER mastodon
+
+# Precompile assets
+RUN cd ~ && \
+    OTP_SECRET=precompile_placeholder SECRET_KEY_BASE=precompile_placeholder rails assets:precompile && \
+    yarn cache clean
+
+# Set the work dir and the container entry point
+WORKDIR /opt/mastodon
+ENTRYPOINT ["/tini", "--"]
