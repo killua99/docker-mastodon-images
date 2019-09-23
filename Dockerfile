@@ -1,18 +1,4 @@
-FROM node:12-alpine
-
-# Install jemalloc
-ENV JE_VER 5.1.0
-
-RUN apk add --no-cache \
-    wget \
-    autoconf && \
-    wget https://github.com/jemalloc/jemalloc/archive/${JE_VER}.tar.gz && \
-    tar xf ${JE_VER}.tar.gz && \
-    cd jemalloc-${JE_VER} && \
-    ./autogen.sh && \
-    ./configure --prefix=/opt/jemalloc && \
-    make -j$(nproc) > /dev/null && \
-    make install_bin install_include install_lib
+FROM node:10-alpine
 
 RUN apk add --no-cache \
     gmp-dev
@@ -37,7 +23,21 @@ ENV LDFLAGS -L/opt/jemalloc/lib/
 # readline-dev vs libedit-dev: https://bugs.ruby-lang.org/issues/11869 and https://github.com/docker-library/ruby/issues/75
 RUN set -eux; \
     \
-    apk add --no-cache --virtual .ruby-builddeps \
+    apk add --no-cache \
+        ca-certificates \
+        build-base \
+        git \
+        python \
+        icu-dev \
+        protobuf-dev \
+        imagemagick \
+        ffmpeg \
+        libidn-dev \
+        yaml-dev \
+        postgresql-dev \
+        wget; \
+    \
+    apk add --no-cache --virtual .builddeps \
         autoconf \
         bison \
         bzip2 \
@@ -62,9 +62,9 @@ RUN set -eux; \
         ruby \
         tar \
         xz \
-        yaml-dev \
-        zlib-dev \
-    ; \
+        zlib-dev;
+
+RUN set -eux; \
     \
     wget -O ruby.tar.xz "https://cache.ruby-lang.org/pub/ruby/${RUBY_MAJOR%-rc}/ruby-$RUBY_VERSION.tar.xz"; \
     echo "$RUBY_DOWNLOAD_SHA256 *ruby.tar.xz" | sha256sum --check --strict; \
@@ -119,7 +119,6 @@ RUN set -eux; \
         yaml-dev \
         zlib-dev \
     ; \
-    apk del --no-network .ruby-builddeps; \
     \
     cd /; \
     rm -r /usr/src/ruby; \
@@ -146,47 +145,69 @@ ENV PATH $GEM_HOME/bin:$BUNDLE_PATH/gems/bin:$PATH
 RUN mkdir -p "$GEM_HOME" && chmod 777 "$GEM_HOME"
 # (BUNDLE_PATH = GEM_HOME, no need to mkdir/chown both)
 
-RUN apk add --no-cache \
-    yarn
-    libico-dev
-    libidn11-dev
-    libpq-dev
-    libprotobuf-dev
-    libpq-dev
-    protobuf-compiler
+# Install jemalloc
+ENV JE_VER 5.1.0
+
+RUN set -eux; \
+    \
+    wget https://github.com/jemalloc/jemalloc/archive/${JE_VER}.tar.gz && \
+    tar xf ${JE_VER}.tar.gz && \
+    cd jemalloc-${JE_VER} && \
+    ./autogen.sh && \
+    ./configure --prefix=/opt/jemalloc && \
+    make -j$(nproc) > /dev/null && \
+    make install_bin install_include install_lib
+
+RUN set -eux; \
+    \
+    apk add --no-cache \
+        yarn;
 
 ARG UID=991
 ARG GID=991
 
 RUN addgroup --gid ${GID} mastodon && \
-    useradd -m -u ${UID} -g ${GID} -d /opt/mastodon mastodon && \
-    echo "mastodon:`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 24 | mkpasswd -s -m sha-256`" | chpasswd
+    adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon
 
 ENV TINI_VERSION 0.18.0
-ENV TINI_SUM 12d20136605531b09a2c2dac02ccee85e1b874eb322ef6baf7561cd93f93c855
 
-RUN set -ex; \
-    ln -s /opt/jemalloc/lib/* /usr/lib/ && \
+RUN set -eux; \
     apkArch="$(apk --print-arch)"; \
-    case "$apkArch" in \
-        armhf) arch='armhf' ;; \
-        aarch64) arch='arm64' ;; \
-        x86_64) arch='amd64' ;; \
-        *) echo >&2 "error: unsupported architecture: $apkArch"; exit 1 ;; \
+    case "${apkArch}" in \
+        x86_64) arch='amd64' \
+            TINI_SUM='12d20136605531b09a2c2dac02ccee85e1b874eb322ef6baf7561cd93f93c855' \
+                ;; \
+        armhf) arch='armel' \
+            TINI_SUM='4924ccd0275c356b45e753687415772bb7872900a6378d54dab0f60f72fac191' \
+                ;; \
+        armv7) arch='armhf' \
+            TINI_SUM='01b54b934d5f5deb32aa4eb4b0f71d0e76324f4f0237cc262d59376bf2bdc269' \
+                ;; \
+        aarch64) arch='arm64' \
+            TINI_SUM='7c5463f55393985ee22357d976758aaaecd08defb3c5294d353732018169b019' \
+                ;; \
+        *) echo >&2 "error: unsupported architecture: ($apkArch)"; exit 1 ;; \
     esac; \
-    wget --quiet -O /tmp/traefik.tar.gz "https://github.com/containous/traefik/releases/download/v2.0.0/traefik_v2.0.0_linux_$arch.tar.gz"; \
-
-ADD https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-${arch} /tini
-RUN echo "$TINI_SUM tini" | sha256sum -c -
-RUN chmod +x /tini
+    \
+    wget https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-${arch} -O /tini && \
+    echo "$TINI_SUM tini" | sha256sum -c - && \
+    chmod +x /tini
 
 # Copy mastodon
 COPY --chown=mastodon:mastodon mastodon-upstream /opt/mastodon
 
-RUN ln -s /opt/mastodon /mastodon && \
+# Compiling assets.
+RUN set -eux; \
+    \
+    gem install bundler && \
+    ln -s /opt/mastodon /mastodon && \
     cd /opt/mastodon && \
     bundle install -j $(nproc) --deployment --without development test && \
     yarn install --pure-lockfile
+
+RUN set -eux; \
+    \
+    apk del --no-network .builddeps;
 
 # Run mastodon services in prod mode
 ENV RAILS_ENV="production"
@@ -195,12 +216,15 @@ ENV NODE_ENV="production"
 # Tell rails to serve static files
 ENV RAILS_SERVE_STATIC_FILES="true"
 ENV BIND="0.0.0.0"
+ENV PATH="${PATH}:/opt/mastodon/bin"
 
 # Set the run user
 USER mastodon
 
 # Precompile assets
-RUN cd ~ && \
+RUN set -eux; \
+    \
+    cd ~ \
     OTP_SECRET=precompile_placeholder SECRET_KEY_BASE=precompile_placeholder rails assets:precompile && \
     yarn cache clean
 
