@@ -4,6 +4,7 @@ set -e
 
 MASTODON_VERSION="v${1:-2.9.3}"
 TAG="${1:-latest}"
+OPTIONS="$2"
 
 cat <<EOF
 
@@ -17,4 +18,4 @@ If you wish to build for only one platform please ask for help: ``./build.sh --h
 
 EOF
 
-time docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 -t killua99/mastodon-alpine:${TAG} . --push
+time docker buildx build --push ${OPTIONS} --platform linux/amd64,linux/arm64,linux/arm/v7 -t killua99/mastodon-alpine:${TAG} .

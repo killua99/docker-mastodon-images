@@ -1,4 +1,4 @@
-FROM node:10-alpine
+FROM node:10-alpine AS build-base
 
 # some of ruby's build scripts are written in ruby
 # we purge system ruby later to make sure our final image uses what we just built
@@ -19,6 +19,7 @@ RUN set -eux; \
         libidn-dev \
         yaml-dev \
         postgresql-dev \
+        tini \
         wget; \
     \
     apk add --no-cache --virtual .builddeps \
@@ -155,33 +156,10 @@ RUN set -eux; \
     make -j$(nproc) > /dev/null && \
     make install_bin install_include install_lib
 
-ENV TINI_VERSION 0.18.0
-
-RUN set -eux; \
-    apkArch="$(apk --print-arch)"; \
-    case "${apkArch}" in \
-        x86_64) arch='amd64' \
-            TINI_SUM='12d20136605531b09a2c2dac02ccee85e1b874eb322ef6baf7561cd93f93c855' \
-                ;; \
-        armhf) arch='armel' \
-            TINI_SUM='4924ccd0275c356b45e753687415772bb7872900a6378d54dab0f60f72fac191' \
-                ;; \
-        armv7) arch='armhf' \
-            TINI_SUM='01b54b934d5f5deb32aa4eb4b0f71d0e76324f4f0237cc262d59376bf2bdc269' \
-                ;; \
-        aarch64) arch='arm64' \
-            TINI_SUM='7c5463f55393985ee22357d976758aaaecd08defb3c5294d353732018169b019' \
-                ;; \
-        *) echo >&2 "error: unsupported architecture: ($apkArch)"; exit 1 ;; \
-    esac; \
-    \
-    wget https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-${arch} -O /tini && \
-    echo "$TINI_SUM tini" | sha256sum -c - && \
-    chmod a+x /tini
+FROM build-base AS final
 
 # Copy mastodon
-COPY --chown=mastodon:mastodon mastodon-upstream /opt/mastodon
-ADD init-compile.sh /opt/mastodon/init-compile.sh
+COPY --chown=991:991 mastodon-upstream /opt/mastodon
 
 ARG UID=991
 ARG GID=991
@@ -192,7 +170,9 @@ RUN set -eux; \
     addgroup --gid ${GID} mastodon && \
     adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon && \
     ln -s /opt/mastodon /mastodon && \
-    chmod a+x /opt/mastodon/init-compile.sh && \
+    cd /opt/mastodon && \
+    bundle install -j $(nproc) --deployment --without development test && \
+    yarn install --pure-lockfile && \
     apk del --no-network .builddeps
 
 # Run mastodon services in prod mode
@@ -217,6 +197,4 @@ RUN set -eux; \
 # Set the work dir and the container entry point
 WORKDIR /opt/mastodon
 
-CMD [ "/bin/sh", "/opt/mastodon/init-compile.sh" ]
-
-ENTRYPOINT [ "/tini", "--" ]
+ENTRYPOINT [ "/sbin/tini", "--" ]
