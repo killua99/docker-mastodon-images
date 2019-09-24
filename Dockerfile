@@ -1,32 +1,16 @@
 FROM node:10-alpine
 
-RUN apk add --no-cache \
-    gmp-dev
-
-# skip installing gem documentation
-RUN set -eux; \
-    mkdir -p /usr/local/etc; \
-    { \
-        echo 'install: --no-document'; \
-        echo 'update: --no-document'; \
-    } >> /usr/local/etc/gemrc
-
-ENV RUBY_MAJOR 2.6
-ENV RUBY_VERSION 2.6.4
-ENV RUBY_DOWNLOAD_SHA256 df593cd4c017de19adf5d0154b8391bb057cef1b72ecdd4a8ee30d3235c65f09
-ENV CPPFLAGS -I/opt/jemalloc/include
-ENV LDFLAGS -L/opt/jemalloc/lib/
-
-
 # some of ruby's build scripts are written in ruby
-#   we purge system ruby later to make sure our final image uses what we just built
+# we purge system ruby later to make sure our final image uses what we just built
 # readline-dev vs libedit-dev: https://bugs.ruby-lang.org/issues/11869 and https://github.com/docker-library/ruby/issues/75
 RUN set -eux; \
     \
     apk add --no-cache \
         ca-certificates \
         build-base \
+        gmp-dev \
         git \
+        yarn \
         python \
         icu-dev \
         protobuf-dev \
@@ -62,7 +46,18 @@ RUN set -eux; \
         ruby \
         tar \
         xz \
-        zlib-dev;
+        zlib-dev && \
+    mkdir -p /usr/local/etc; \
+    { \
+        echo 'install: --no-document'; \
+        echo 'update: --no-document'; \
+    } >> /usr/local/etc/gemrc
+
+ENV RUBY_MAJOR 2.6
+ENV RUBY_VERSION 2.6.4
+ENV RUBY_DOWNLOAD_SHA256 df593cd4c017de19adf5d0154b8391bb057cef1b72ecdd4a8ee30d3235c65f09
+ENV CPPFLAGS -I/opt/jemalloc/include
+ENV LDFLAGS -L/opt/jemalloc/lib/
 
 RUN set -eux; \
     \
@@ -142,7 +137,9 @@ ENV BUNDLE_PATH="$GEM_HOME" \
 # path recommendation: https://github.com/bundler/bundler/pull/6469#issuecomment-383235438
 ENV PATH $GEM_HOME/bin:$BUNDLE_PATH/gems/bin:$PATH
 # adjust permissions of a few directories for running "gem install" as an arbitrary user
-RUN mkdir -p "$GEM_HOME" && chmod 777 "$GEM_HOME"
+RUN mkdir -p "$GEM_HOME" && chmod 777 "$GEM_HOME" && \
+    gem install bundler && \
+    irb
 # (BUNDLE_PATH = GEM_HOME, no need to mkdir/chown both)
 
 # Install jemalloc
@@ -157,17 +154,6 @@ RUN set -eux; \
     ./configure --prefix=/opt/jemalloc && \
     make -j$(nproc) > /dev/null && \
     make install_bin install_include install_lib
-
-RUN set -eux; \
-    \
-    apk add --no-cache \
-        yarn;
-
-ARG UID=991
-ARG GID=991
-
-RUN addgroup --gid ${GID} mastodon && \
-    adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon
 
 ENV TINI_VERSION 0.18.0
 
@@ -195,19 +181,19 @@ RUN set -eux; \
 
 # Copy mastodon
 COPY --chown=mastodon:mastodon mastodon-upstream /opt/mastodon
+COPY --chown=mastodon:mastodon init-compile.sh /opt/mastodon/init-compile.sh
+
+ARG UID=991
+ARG GID=991
 
 # Compiling assets.
 RUN set -eux; \
     \
-    gem install bundler && \
+    addgroup --gid ${GID} mastodon && \
+    adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon && \
     ln -s /opt/mastodon /mastodon && \
-    cd /opt/mastodon && \
-    bundle install -j $(nproc) --deployment --without development test && \
-    yarn install --pure-lockfile
-
-RUN set -eux; \
-    \
-    apk del --no-network .builddeps;
+    chmod a+x /opt/mastodon/init-compile.sh && \
+    apk del --no-network .builddeps
 
 # Run mastodon services in prod mode
 ENV RAILS_ENV="production"
@@ -230,4 +216,7 @@ RUN set -eux; \
 
 # Set the work dir and the container entry point
 WORKDIR /opt/mastodon
-ENTRYPOINT ["/tini", "--"]
+
+CMD [ "/bin/bash", "/opt/mastodon/init-compile.sh" ]
+
+ENTRYPOINT [ "/tini", "--" ]
