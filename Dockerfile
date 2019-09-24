@@ -177,11 +177,11 @@ RUN set -eux; \
     \
     wget https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-${arch} -O /tini && \
     echo "$TINI_SUM tini" | sha256sum -c - && \
-    chmod +x /tini
+    chmod a+x /tini
 
 # Copy mastodon
 COPY --chown=mastodon:mastodon mastodon-upstream /opt/mastodon
-COPY --chown=mastodon:mastodon init-compile.sh /opt/mastodon/init-compile.sh
+ADD init-compile.sh /opt/mastodon/init-compile.sh
 
 ARG UID=991
 ARG GID=991
@@ -217,6 +217,6 @@ RUN set -eux; \
 # Set the work dir and the container entry point
 WORKDIR /opt/mastodon
 
-CMD [ "/bin/bash", "/opt/mastodon/init-compile.sh" ]
+CMD [ "/bin/sh", "/opt/mastodon/init-compile.sh" ]
 
 ENTRYPOINT [ "/tini", "--" ]
