@@ -160,6 +160,7 @@ FROM build-base AS final
 
 # Copy mastodon
 COPY --chown=991:991 mastodon-upstream /opt/mastodon
+ADD https://raw.githubusercontent.com/eficode/wait-for/master/wait-for /wait-for
 
 ARG UID=991
 ARG GID=991
@@ -167,6 +168,7 @@ ARG GID=991
 # Compiling assets.
 RUN set -eux; \
     \
+    chmod a+x /wait-for && \
     addgroup --gid ${GID} mastodon && \
     adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon && \
     ln -s /opt/mastodon /mastodon && \
