@@ -1,4 +1,4 @@
-language: ruby
+language: minimal
 dist: bionic
 
 services:
@@ -21,6 +21,9 @@ before_install:
   - docker buildx create --name mybuilder
   - docker buildx use mybuilder
   - docker buildx inspect --bootstrap
+
+script:
+  - echo 'building and pushing'
 
 deploy:
   provider: script
