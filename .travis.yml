@@ -15,6 +15,7 @@ before_install:
   - docker version
   - mkdir -p ~/.docker/cli-plugins
   - wget -O - https://github.com/docker/buildx/releases/download/v0.3.0/buildx-v0.3.0.linux-amd64 > ~/.docker/cli-plugins/docker-buildx
+  - chmod a+x ~/.docker/cli-plugins/docker-buildx
   - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   - docker buildx create --name mybuilder
