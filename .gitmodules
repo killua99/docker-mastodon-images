@@ -1,4 +1,4 @@
 [submodule "mastodon-upstream"]
 	path = mastodon-upstream
-	url = git@github.com:tootsuite/mastodon.git
+	url = https://github.com/tootsuite/mastodon.git
 	branch = master
