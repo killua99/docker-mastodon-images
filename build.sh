@@ -18,4 +18,13 @@ If you wish to build for only one platform please ask for help: ``./build.sh --h
 
 EOF
 
-time docker buildx build --push ${OPTIONS} --platform linux/amd64,linux/arm64,linux/arm/v7 -t killua99/mastodon-alpine:${TAG} .
+cd mastodon-upstream
+git fetch --all && git checkout ${MASTODON_VERSION}
+cd ..
+
+time docker buildx build \
+    --push \
+    ${OPTIONS} \
+    --build-arg MASTODON_VERSION=${TAG} \
+    --platform linux/amd64,linux/arm64,linux/arm/v7 \
+    -t killua99/mastodon-alpine:${TAG} .

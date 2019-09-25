@@ -1,5 +1,7 @@
 FROM node:10-alpine AS build-base
 
+ARG MASTODON_VERSION=2.9.3
+
 # some of ruby's build scripts are written in ruby
 # we purge system ruby later to make sure our final image uses what we just built
 # readline-dev vs libedit-dev: https://bugs.ruby-lang.org/issues/11869 and https://github.com/docker-library/ruby/issues/75
@@ -156,11 +158,27 @@ RUN set -eux; \
     make -j$(nproc) > /dev/null && \
     make install_bin install_include install_lib
 
-FROM build-base AS final
+FROM build-base AS assets-compiled
+
+COPY mastodon-upstream /tmp/mastodon-build
+
+RUN set -eux; \
+    \
+    mkdir -p /opt/mastodon && \
+    cp /tmp/mastodon-build/Gemfile* /opt/mastodon/ && \
+    cp /tmp/mastodon-build/package.json /opt/mastodon/ && \
+    cp /tmp/mastodon-build/yarn.lock /opt/mastodon/ && \
+    cd /opt/mastodon && \
+    bundle install -j$(nproc) --deployment --without development test && \
+    yarn install --pure-lockfile && \
+    apk del --no-network .builddeps
+
+FROM assets-compiled AS final
 
 # Copy mastodon
 COPY --chown=991:991 mastodon-upstream /opt/mastodon
-ADD https://raw.githubusercontent.com/eficode/wait-for/master/wait-for /wait-for
+COPY --from=assets-compiled --chown=991:991 /opt/mastodon /opt/mastodon
+ADD --chown=991:991 https://raw.githubusercontent.com/eficode/wait-for/master/wait-for /wait-for
 
 ARG UID=991
 ARG GID=991
@@ -171,11 +189,8 @@ RUN set -eux; \
     chmod a+x /wait-for && \
     addgroup --gid ${GID} mastodon && \
     adduser -D -u ${UID} -G mastodon -h /opt/mastodon mastodon && \
-    ln -s /opt/mastodon /mastodon && \
     cd /opt/mastodon && \
-    bundle install -j $(nproc) --deployment --without development test && \
-    yarn install --pure-lockfile && \
-    apk del --no-network .builddeps
+    ln -s /opt/mastodon /mastodon
 
 # Run mastodon services in prod mode
 ENV RAILS_ENV="production"
