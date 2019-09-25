@@ -18,6 +18,7 @@ If you wish to build for only one platform please ask for help: ``./build.sh --h
 
 EOF
 
+git submodule update --init --recursive
 cd mastodon-upstream
 git fetch --all && git checkout ${MASTODON_VERSION}
 cd ..
@@ -25,6 +26,6 @@ cd ..
 time docker buildx build \
     --push \
     ${OPTIONS} \
-    --build-arg MASTODON_VERSION=${TAG} \
+    --build-arg MASTODON_VERSION=${MASTODON_VERSION} \
     --platform linux/amd64,linux/arm64,linux/arm/v7 \
     -t killua99/mastodon-alpine:${TAG} .

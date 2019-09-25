@@ -24,7 +24,7 @@ RUN set -eux; \
         tini \
         wget; \
     \
-    apk add --no-cache --virtual .builddeps \
+    apk add --no-cache --virtual .build-deps \
         autoconf \
         bison \
         bzip2 \
@@ -156,7 +156,8 @@ RUN set -eux; \
     ./autogen.sh && \
     ./configure --prefix=/opt/jemalloc && \
     make -j$(nproc) > /dev/null && \
-    make install_bin install_include install_lib
+    make install_bin install_include install_lib && \
+    apk del --no-network .build-deps
 
 FROM build-base AS assets-compiled
 
@@ -171,7 +172,7 @@ RUN set -eux; \
     cd /opt/mastodon && \
     bundle install -j$(nproc) --deployment --without development test && \
     yarn install --pure-lockfile && \
-    apk del --no-network .builddeps
+    yarn cache clean
 
 FROM assets-compiled AS final
 
@@ -208,8 +209,7 @@ USER mastodon
 RUN set -eux; \
     \
     cd ~ \
-    OTP_SECRET=precompile_placeholder SECRET_KEY_BASE=precompile_placeholder rails assets:precompile && \
-    yarn cache clean
+    OTP_SECRET=precompile_placeholder SECRET_KEY_BASE=precompile_placeholder rails assets:precompile
 
 # Set the work dir and the container entry point
 WORKDIR /opt/mastodon
