@@ -7,11 +7,17 @@ before_install:
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
   - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
   - sudo apt-get update
-  - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce
+  - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce qemu-user-static
+  - docker version
   - mkdir -p ~/.docker/cli-plugins
   - wget -O - https://github.com/docker/buildx/releases/download/v0.3.0/buildx-v0.3.0.linux-amd64 > ~/.docker/cli-plugins/docker-buildx
+  - docker run --rm --privileged docker/binfmt:820fdd95a9972a5308930a2bdfb8573dd4447ad3
+  - cat /proc/sys/fs/binfmt_misc/qemu-aarch64
   - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  - docker buildx create --name mybuilder
+  - docker buildx use mybuilder
+  - docker buildx inspect --bootstrap
 
 deploy:
   provider: script
