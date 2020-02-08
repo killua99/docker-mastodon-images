@@ -10,6 +10,7 @@ while [[ $# -gt 0 ]]; do
     case "$key" in
         -h|--help)
             cat <<EOF
+
 Comman usage:
 
 ./build.sh [<version>] --latest -d|--debug -h|--help
@@ -29,9 +30,9 @@ Help:
   This bash script is a helper to tag new mastodon build using alpine as base
   full usage example:
 
-    ./build.sh 2.9.3 --latest
+    ``./build.sh 2.9.3 --latest``
 
-    ./build.sh 2.9.0 --debug
+    ``./build.sh 2.9.0 --debug``
 
 EOF
             exit 0
@@ -61,11 +62,11 @@ cat <<EOF
 
 We're about to build docker 🚢 image for the next platforms:
 
-    - linux/amd64
-    - linux/arm64
-    - linux/arm/v7
+    📌 linux/amd64
+    📌 linux/arm64
+    📌 linux/arm/v7
 
-If you wish to build for only one platform please ask for help: ``./build.sh --help (-h)``
+If you wish to build for only one platform please ask for help: ``./build.sh -h|--help``
 
 EOF
 
